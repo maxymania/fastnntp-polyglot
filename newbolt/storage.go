@@ -26,11 +26,9 @@ SOFTWARE.
 package newbolt
 
 import "github.com/boltdb/bolt"
-import "github.com/byte-mug/fastnntp/posting"
 
 type Articledb struct{
 	DB *bolt.DB
-	Stamper posting.Stamper
 }
 
 type articleTransaction struct{
