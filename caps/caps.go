@@ -23,7 +23,7 @@ SOFTWARE.
 */
 
 
-package oldbolt
+package caps
 
 import "github.com/byte-mug/fastnntp"
 import "github.com/byte-mug/fastnntp/posting"
