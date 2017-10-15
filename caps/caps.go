@@ -54,6 +54,18 @@ func lam2bool(lam fastnntp.ListActiveMode) (active bool, descr bool) {
 	return
 }
 
+type Caps struct{
+	Stamper posting.Stamper
+	GroupHeadDB newspolyglot.GroupHeadDB
+	GroupHeadCache newspolyglot.GroupHeadCache
+	ArticlePostingDB newspolyglot.ArticlePostingDB
+	ArticleDirectDB newspolyglot.ArticleDirectDB
+	ArticleGroupDB newspolyglot.ArticleGroupDB
+	GroupRealtimeDB newspolyglot.GroupRealtimeDB
+	GroupStaticDB newspolyglot.GroupStaticDB
+}
+
+
 func (a *Caps) CheckPost() (possible bool) { return a.ArticlePostingDB.ArticlePostingCheckPost() }
 func (a *Caps) CheckPostId(id []byte) (wanted bool, possible bool) {
 	return a.ArticlePostingDB.ArticlePostingCheckPostId(id)

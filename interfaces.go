@@ -62,7 +62,7 @@ type ArticleDirectDB interface{
 type ArticleGroupDB interface{
 	ArticleGroupStat(group []byte, num int64,id_buf []byte) ([]byte, bool)
 	ArticleGroupGet(group []byte, num int64,head ,body bool,id_buf []byte) ([]byte,*ArticleObject)
-	ArticleGroupOverview(group []byte, first, last int64,targ func(*ArticleOverview))
+	ArticleGroupOverview(group []byte, first, last int64,targ func(int64,*ArticleOverview))
 	ArticleGroupMove(group []byte, i int64, backward bool, id_buf []byte) (ni int64, id []byte, ok bool)
 	ArticleGroupList(group []byte, first, last int64,targ func(int64))
 }

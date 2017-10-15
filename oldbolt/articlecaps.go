@@ -144,7 +144,7 @@ func (a *Wrapper) ArticleGroupGet(group []byte, num int64,head ,body bool,id_buf
 	return
 }
 
-func (a *Wrapper) ArticleGroupOverview(group []byte, first, last int64,targ func(*newspolyglot.ArticleOverview)) {
+func (a *Wrapper) ArticleGroupOverview(group []byte, first, last int64,targ func(int64,*newspolyglot.ArticleOverview)) {
 	article := new(newspolyglot.ArticleOverview)
 	a.DB.View(func(tx *bolt.Tx) error {
 		var ao articleOver
@@ -165,7 +165,7 @@ func (a *Wrapper) ArticleGroupOverview(group []byte, first, last int64,targ func
 			article.Refs    = ao.SF[4]
 			article.Bytes   = ao.LN[0]
 			article.Lines   = ao.LN[1]
-			targ(article)
+			targ(num,article)
 		}
 		return nil
 	})
