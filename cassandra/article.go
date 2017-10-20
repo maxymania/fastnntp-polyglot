@@ -117,8 +117,6 @@ func (a *ArticleStorage) ArticleGroupOverview(group []byte, first, last int64, t
 	})
 }
 func (a *ArticleStorage) ArticleGroupList(group []byte, first, last int64, targ func(int64)) {
-	//fmt.Printf("ArticleGroupList %q %d %d\n",group,first,last)
-	//if last==9223372036854775807
 	getLoopGNV(a.gnv,group,first,last,func(i int64,b []byte) bool {
 		targ(i)
 		return true
