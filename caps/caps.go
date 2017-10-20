@@ -147,6 +147,9 @@ func (a *Caps) CursorMoveGroup(g *fastnntp.Group, i int64, backward bool, id_buf
 	return a.ArticleGroupDB.ArticleGroupMove(g.Group,i,backward,id_buf)
 }
 func (a *Caps) ListGroup(g *fastnntp.Group, w *fastnntp.DotWriter, first, last int64) {
+	if first<g.Low { first = g.Low }
+	if last>g.High { last = g.High }
+	// Restrict the range.
 	a.ArticleGroupDB.ArticleGroupList(g.Group,first,last,func(num int64){
 		fmt.Fprintf(w,"%v\r\n",num)
 	})
