@@ -24,104 +24,105 @@ SOFTWARE.
 package groups
 
 import "sync"
-import "time"
+import "github.com/vmihailenco/msgpack"
+import "fmt"
 
-func jenkins(group []byte) uint32 {
-	hash := uint32(0)
-	for _,k := range group {
-		hash += uint32(k)
-		hash += hash << 10
-		hash ^= hash >> 6
-	}
-	hash += hash << 3;
-	hash ^= hash >> 11;
-	hash += hash << 15;
-	return hash
+type TablePair struct {
+	GroupID []byte
+	Value   []byte
 }
 
-func joinerr(e1, e2 error) error {
-	if e1==nil { return e2 }
-	return e1
+type BackendTable interface {
+	// ids must be byte arrays.
+	GetPairs([]interface{}) ([]TablePair,error)
+	SetPairs([]TablePair) error
 }
 
-type timedGroupRTE struct{
-	GroupRTE
-	valid time.Time
-}
 
-// The count is assumed to be dense
-type GroupRTE struct{
-	Start,High,Lost int64
-}
-
-type GroupUpdater interface{
-	GroupLoad(group []byte,rte *GroupRTE) error
-	GroupStore(group []byte,rte *GroupRTE) error
-}
-
-type updater struct{
+type GroupHeadActor struct{
 	sync.Mutex
-	cache map[string]*timedGroupRTE
+	tabbuf  [256]TablePair
+	keybuf  [256]interface{}
+	cache   map[string]*GroupEntry
+	backend BackendTable
 }
-func (u *updater) get(group []byte, gu GroupUpdater) (*timedGroupRTE,error) {
-	now := time.Now()
-	var grt *timedGroupRTE
-	var ok  bool
-	if u.cache!=nil {
-		grt,ok = u.cache[string(group)]
-		if !ok {
-		} else if now.After(grt.valid) {
-			delete(u.cache,string(group))
-		} else  {
-			return grt,nil
-		}
-	}
-	grt = new(timedGroupRTE)
-	err := gu.GroupLoad(group,&(grt.GroupRTE))
-	if err!=nil { return nil,err }
-	grt.valid = now.Add(time.Hour)
-	if u.cache==nil {
-		u.cache =  map[string]*timedGroupRTE{ string(group): grt }
-	}else{
-		u.cache[string(group)] = grt
-	}
-	return grt,nil
+func NewGroupHeadActor(bt BackendTable) *GroupHeadActor {
+	gha := new(GroupHeadActor)
+	gha.cache   = make(map[string]*GroupEntry)
+	gha.backend = bt
+	return gha
 }
-func (u *updater) increment(group []byte, gu GroupUpdater) (int64,error) {
-	u.Lock(); defer u.Unlock()
-	grt,err := u.get(group,gu)
-	if err!=nil { return 0,err }
-	grt.High++
-	return grt.High,gu.GroupStore(group,&(grt.GroupRTE))
-}
-func (u *updater) revert(group []byte,i int64, gu GroupUpdater) (error) {
-	u.Lock(); defer u.Unlock()
-	grt,err := u.get(group,gu)
-	if err!=nil { return err }
-	if grt.High==i { grt.High-- } else { grt.Lost++ }
-	return gu.GroupStore(group,&(grt.GroupRTE))
-}
-type GroupHead struct {
-	GU GroupUpdater
-	u [256]updater
-}
-func (g *GroupHead) GroupHeadInsert(groups [][]byte, buf []int64) ([]int64, error) {
-	if cap(buf)<len(groups) { buf = make([]int64,len(groups)) }
-	buf = buf[:0]
+func (g *GroupHeadActor) pull(groups [][]byte) error {
+	buf := g.keybuf[:0]
 	for _,group := range groups {
-		i,e := g.u[jenkins(group)&255].increment(group,g.GU)
-		if e!=nil {
-			g.GroupHeadRevert(groups[:len(buf)],buf)
-			return nil,e
+		_,ok := g.cache[string(group)]
+		if ok { continue }
+		buf = append(buf,group)
+	}
+	tab,err := g.backend.GetPairs(buf)
+	if err!=nil { return err }
+	for _,pair := range tab {
+		ge := new(GroupEntry)
+		msgpack.Unmarshal(pair.Value,&ge)
+		g.cache[string(pair.GroupID)] = ge
+	}
+	for _,group := range groups {
+		_,ok := g.cache[string(group)]
+		if !ok { return fmt.Errorf("No such group %q",group) }
+	}
+	return nil
+}
+func (g *GroupHeadActor) MoveDown(group []byte) (int64,error) {
+	g.Lock(); defer g.Unlock()
+	err := g.pull([][]byte{group})
+	if err!=nil { return 0,err }
+	tab := g.tabbuf[:0]
+	grp := g.cache[string(group)]
+	bak := *grp
+	grp.MoveDown()
+	data,_ := msgpack.Marshal(grp)
+	tab = append(tab,TablePair{group,data})
+	err = g.backend.SetPairs(tab)
+	if err!=nil {
+		*grp = bak
+		return 0,err
+	}
+	return grp.High1,nil
+}
+
+func (g *GroupHeadActor) GroupHeadInsert(groups [][]byte, buf []int64) ([]int64, error) {
+	g.Lock(); defer g.Unlock()
+	err := g.pull(groups)
+	if err!=nil { return nil,err }
+	if cap(buf)<len(groups) { buf = make([]int64,len(groups)) } else { buf = buf[:len(groups)] }
+	
+	tab := g.tabbuf[:0]
+	for i,group := range groups {
+		ge := g.cache[string(group)]
+		buf[i] = ge.Increment()
+		data,_ := msgpack.Marshal(ge)
+		tab = append(tab,TablePair{group,data})
+	}
+	err = g.backend.SetPairs(tab)
+	if err!=nil {
+		// If we cant publish the result, perform a Rollback.
+		for i,group := range groups {
+			g.cache[string(group)].Rollback(buf[i])
 		}
-		buf = append(buf,i)
+		return nil,err
 	}
 	return buf,nil
 }
-func (g *GroupHead) GroupHeadRevert(groups [][]byte, nums []int64) (e error) {
+func (g *GroupHeadActor) GroupHeadRevert(groups [][]byte, nums []int64) error {
+	g.Lock(); defer g.Unlock()
+	err := g.pull(groups)
+	if err!=nil { return err }
+	tab := g.tabbuf[:0]
 	for i,group := range groups {
-		e = joinerr(e,g.u[jenkins(group)&255].revert(group,nums[i],g.GU))
+		ge := g.cache[string(group)]
+		ge.Rollback(nums[i])
+		data,_ := msgpack.Marshal(ge)
+		tab = append(tab,TablePair{group,data})
 	}
-	return
+	return g.backend.SetPairs(tab)
 }
-

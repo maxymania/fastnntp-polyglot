@@ -21,57 +21,30 @@ SOFTWARE.
 */
 
 
-package groups
+package cassa
 
+import "github.com/gocassa/gocassa"
+import "github.com/maxymania/fastnntp-polyglot/groups"
 
-func skipPos(low, high, count, pos int64) int64 {
-	if high!=0 {
-		pos = high+1
-	}
-	return pos
+type CassaTable struct{
+	mpt gocassa.MapTable
 }
-type GroupEntry struct {
-	Low1,High1,Count1 int64
-	Low2,High2,Count2 int64
-}
-func (g *GroupEntry) Increment() int64 {
-	pos := skipPos(g.Low1,g.High1,g.Count1,0)
-	pos  = skipPos(g.Low2,g.High2,g.Count2,pos)
-	if pos==0 { pos++ }
-	g.High2 = pos
-	if g.Low2==0 { g.Low2 = pos }
-	g.Count2++
-	return pos
-}
-func (g *GroupEntry) Rollback(i int64) {
-	if g.Low2==0 { return }
-	if g.High2==i { g.High2-- }
-	g.Count2--
-	if g.Count2==0 || g.Low2==g.High2 {
-		g.Low2,g.High2,g.Count2 = 0,0,0
+func NewCassaTable(ks gocassa.KeySpace, n string) *CassaTable {
+	return &CassaTable{
+		ks.MapTable(n,"GroupID",&groups.TablePair{}),
 	}
 }
-func (g *GroupEntry) MoveDown() {
-	if g.Low2==0 { return }
-	if g.Low1==0 {
-		g.Low1,g.High1,g.Count1,g.Low2,g.High2,g.Count2 = g.Low2,g.High2,g.Count2,0,0,0
-	} else {
-		g.High1   = g.High2
-		g.Count1 += g.Count2
-		g.Low2,g.High2,g.Count2 = 0,0,0
-	}
-}
-func (g *GroupEntry) HlStats() (low,high,count int64) {
-	if g.Low1!=0 {
-		low = g.Low1
-		high = g.High1
-		count = g.Count1
-	}
-	if g.Low2!=0 {
-		if low==0 { low = g.Low2 }
-		count += g.Count2
-		high = g.High2
-	}
+func (c *CassaTable) GetPairs(ids []interface{}) (tp []groups.TablePair,e error) {
+	e = c.mpt.MultiRead(ids,&tp).Run()
 	return
+}
+func (c *CassaTable) SetPairs(tab []groups.TablePair) error {
+	var op gocassa.Op
+	for i,pair := range tab {
+		nop := c.mpt.Set(pair)
+		if i==0 { op = nop } else { op = op.Add(nop) }
+	}
+	if op==nil { return nil }
+	return op.Run()
 }
 
