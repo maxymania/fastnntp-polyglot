@@ -30,9 +30,14 @@ type CassaTable struct{
 	mpt gocassa.MapTable
 }
 func NewCassaTable(ks gocassa.KeySpace, n string) *CassaTable {
+	mpt := ks.MapTable(n,"GroupID",&groups.TablePair{}).
+		WithOptions(gocassa.Options{CompactStorage:true})
 	return &CassaTable{
-		ks.MapTable(n,"GroupID",&groups.TablePair{}),
+		mpt,
 	}
+}
+func (c *CassaTable) Initialize() {
+	c.mpt.CreateIfNotExist()
 }
 func (c *CassaTable) GetPairs(ids []interface{}) (tp []groups.TablePair,e error) {
 	e = c.mpt.MultiRead(ids,&tp).Run()
@@ -47,4 +52,26 @@ func (c *CassaTable) SetPairs(tab []groups.TablePair) error {
 	if op==nil { return nil }
 	return op.Run()
 }
+
+type CassaStaticTable struct{
+	tab gocassa.Table
+}
+func NewCassaStaticTable(ks gocassa.KeySpace, n string) *CassaStaticTable {
+	return &CassaStaticTable{
+		ks.Table(n,&groups.TablePair{},gocassa.Keys{
+			PartitionKeys: []string{"GroupID"},
+		}).WithOptions(gocassa.Options{CompactStorage:true}),
+	}
+}
+func (c *CassaStaticTable) Initialize() {
+	c.tab.CreateIfNotExist()
+}
+func (c *CassaStaticTable) GetTable() (ts []groups.TablePair,e error) {
+	e = c.tab.Where().Read(&ts).Run()
+	return
+}
+func (c *CassaStaticTable) SetRecord(pair groups.TablePair) error {
+	return c.tab.Set(pair).Run()
+}
+
 

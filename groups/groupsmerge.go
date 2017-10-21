@@ -61,6 +61,13 @@ func (g *GroupEntry) MoveDown() {
 		g.Low2,g.High2,g.Count2 = 0,0,0
 	}
 }
+func (g *GroupEntry) UpdateDown(oldhigh,low,high,count int64) bool {
+	if g.High1!=oldhigh { return false }
+	g.High1 = high
+	g.Low1 = low
+	g.Count1 = count
+	return true
+}
 func (g *GroupEntry) HlStats() (low,high,count int64) {
 	if g.Low1!=0 {
 		low = g.Low1

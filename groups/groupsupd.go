@@ -72,6 +72,14 @@ func (g *GroupHeadActor) pull(groups [][]byte) error {
 	}
 	return nil
 }
+func (g *GroupHeadActor) AdmCreateGroup(group []byte) int {
+	g.Lock(); defer g.Unlock()
+	g.pull([][]byte{group})
+	if g.cache[string(group)]!=nil { return 1 }
+	data,_ := msgpack.Marshal(new(GroupEntry))
+	if g.backend.SetPairs([]TablePair{{group,data}})!=nil { return 2 }
+	return 0
+}
 func (g *GroupHeadActor) MoveDown(group []byte) (int64,error) {
 	g.Lock(); defer g.Unlock()
 	err := g.pull([][]byte{group})
@@ -88,6 +96,31 @@ func (g *GroupHeadActor) MoveDown(group []byte) (int64,error) {
 		return 0,err
 	}
 	return grp.High1,nil
+}
+func (g *GroupHeadActor) GetDown(group []byte) (int64,error) {
+	g.Lock(); defer g.Unlock()
+	err := g.pull([][]byte{group})
+	if err!=nil { return 0,err }
+	grp := g.cache[string(group)]
+	return grp.High1,nil
+}
+func (g *GroupHeadActor) UpdateDown(group []byte,oldHigh,low,high,count int64) (bool,error) {
+	g.Lock(); defer g.Unlock()
+	err := g.pull([][]byte{group})
+	if err!=nil { return false,err }
+	tab := g.tabbuf[:0]
+	grp := g.cache[string(group)]
+	bak := *grp
+	ok := grp.UpdateDown(oldHigh,low,high,count)
+	if !ok { return false,nil }
+	data,_ := msgpack.Marshal(grp)
+	tab = append(tab,TablePair{group,data})
+	err = g.backend.SetPairs(tab)
+	if err!=nil {
+		*grp = bak
+		return false,err
+	}
+	return true,nil
 }
 
 func (g *GroupHeadActor) GroupHeadInsert(groups [][]byte, buf []int64) ([]int64, error) {
@@ -126,3 +159,13 @@ func (g *GroupHeadActor) GroupHeadRevert(groups [][]byte, nums []int64) error {
 	}
 	return g.backend.SetPairs(tab)
 }
+// This function exist for debug-purposes only.
+func (g *GroupHeadActor) HlStats(group []byte) (low,high,count int64,err error) {
+	g.Lock(); defer g.Unlock()
+	err = g.pull([][]byte{group})
+	if err!=nil { return }
+	low,high,count = g.cache[string(group)].HlStats()
+	return
+}
+
+
