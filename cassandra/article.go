@@ -28,33 +28,17 @@ import "github.com/maxymania/fastnntp-polyglot"
 import "github.com/byte-mug/fastnntp/posting"
 import "github.com/davecgh/go-xdr/xdr2"
 import "bytes"
-//import "fmt"
 
 type StoredArticle struct{
-	ArticleOverview `cql:",squash"`
-	Head,Body []byte
+	MsgId,Head,Body,Over []byte
 }
 
 func NewStoredArticleTable(ks gocassa.KeySpace) gocassa.Table {
-	return ks.Table("articles",&StoredArticle{},gocassa.Keys{
+	return ks.Table("v2articles",&StoredArticle{},gocassa.Keys{
 		PartitionKeys: []string{"MsgId"},
+	}).WithOptions(gocassa.Options{
+		TableName: "v2articles", // Yes, We override the Table name.
 	})
-}
-
-type ArticleOverview struct{
-	Subject, Sender, Date, MsgId, Refs []byte
-	Bytes, Lines int64
-}
-func (a *ArticleOverview) Convert() *newspolyglot.ArticleOverview{
-	return &newspolyglot.ArticleOverview{
-		a.Subject,
-		a.Sender,
-		a.Date,
-		a.MsgId,
-		a.Refs,
-		a.Bytes,
-		a.Lines,
-	}
 }
 
 type ArticleStorage struct{
@@ -91,7 +75,9 @@ func (a *ArticleStorage) ArticleDirectGet(id []byte, head, body bool) *newspolyg
 func (a *ArticleStorage) ArticleDirectOverview(id []byte) *newspolyglot.ArticleOverview {
 	sat := new(StoredArticle)
 	if a.sat.Where(gocassa.Eq("MsgId",id)).ReadOne(sat).Run()!=nil { return nil }
-	return sat.ArticleOverview.Convert()
+	aov := new(newspolyglot.ArticleOverview)
+	xdr.Unmarshal(bytes.NewReader(sat.Over),aov) // Assume the correct format.
+	return aov
 }
 
 func (a *ArticleStorage) ArticleGroupStat(group []byte, num int64, id_buf []byte) ([]byte, bool) {
@@ -139,23 +125,27 @@ func (a *ArticleStorage) ArticleGroupMove(group []byte, i int64, backward bool, 
 }
 
 func (a *ArticleStorage) ArticlePostingPost(headp *posting.HeadInfo, body []byte, ngs [][]byte, numbs []int64) (rejected bool, failed bool, err error) {
+	ao := new(newspolyglot.ArticleOverview)
+	ao.Subject = headp.Subject
+	ao.From    = headp.From
+	ao.Date    = headp.Date
+	ao.MsgId   = headp.MessageId
+	ao.Refs    = headp.References
+	ao.Bytes   = int64(len(headp.RAW)+2+len(body))
+	ao.Lines   = posting.CountLines(body)
+	
+	chunk := []byte(nil)
+	{
+		buf := new(bytes.Buffer)
+		xdr.Marshal(buf,&(ao))
+		chunk = buf.Bytes()
+	}
+	
 	art := new(StoredArticle)
-	art.Subject = headp.Subject
-	art.Sender  = headp.From
-	art.Date    = headp.Date
 	art.MsgId   = headp.MessageId
-	art.Refs    = headp.References
-	
-	art.Bytes   = int64(len(headp.RAW)+2+len(body))
-	art.Lines   = posting.CountLines(body)
-	
 	art.Head = headp.RAW
 	art.Body = body
-	
-	buf := new(bytes.Buffer)
-	chunk := []byte(nil)
-	xdr.Marshal(buf,&(art.ArticleOverview))
-	chunk = buf.Bytes()
+	art.Over = chunk
 	
 	op := a.sat.Set(art)
 	for i,ng := range ngs {

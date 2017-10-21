@@ -24,7 +24,6 @@ SOFTWARE.
 package cassandra
 
 import "github.com/gocassa/gocassa"
-//import "fmt"
 
 func joinUp(buf []byte,s []byte,i int64) []byte {
 	u := uint64(i)
@@ -46,14 +45,16 @@ type GroupNumValue struct{
 	Value  []byte
 }
 func GnvTable(ksp gocassa.KeySpace) gocassa.Table {
-	return ksp.Table("grpov",&GroupNumValue{},gocassa.Keys{
+	return ksp.Table("v2grpov",&GroupNumValue{},gocassa.Keys{
 		PartitionKeys: []string{"Partit"},
 		ClusteringColumns: []string{"Clustr"},
+	}).WithOptions(gocassa.Options{
+		TableName: "v2grpov", // Yes, We override the Table name.
 	})
 }
 
 func mkGNV(group []byte,num int64,value []byte) GroupNumValue {
-	return GroupNumValue{joinUp(nil,group,num>>16),int(num&0xffff),num,value}
+	return GroupNumValue{joinUp(make([]byte,0,len(group)+6),group,num>>16),int(num&0xffff),num,value}
 }
 
 func getGNV(tab gocassa.Table,group []byte,num int64) gocassa.Filter {
@@ -132,4 +133,7 @@ func getLoopGNV(tab gocassa.Table,group []byte,first, last int64,fu func(int64,[
 		}
 	}
 }
+
+
+
 
