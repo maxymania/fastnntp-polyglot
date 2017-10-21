@@ -27,6 +27,15 @@ import "sort"
 import "github.com/vmihailenco/msgpack"
 import "fmt"
 
+func growTablePairArray(i []TablePair,wanted int) []TablePair {
+	if cap(i)<wanted {
+		n := make([]TablePair,wanted)
+		copy(n,i)
+		return n
+	}
+	return i[:wanted]
+}
+
 type ImportTable interface{
 	// Reads the table.
 	GetTable() ([]TablePair,error)
@@ -37,6 +46,7 @@ type GroupOverviewStatic struct{
 	Array  []string
 	IArray map[string]int // Inverse array
 }
+
 func ImportGroupOverviewStatic(i ImportTable) (*GroupOverviewStatic,error) {
 	tab,err := i.GetTable()
 	if err!=nil { return nil,err }
@@ -59,6 +69,7 @@ type GroupOverview struct{
 	// This should be the same table, that is also used by GroupHeadActor.
 	Realtime BackendTable
 }
+
 func (g *GroupOverview) GroupStaticList(targ func(group []byte, descr []byte)) bool {
 	if g.Overview==nil { return false }
 	mp := g.Overview.Map
@@ -80,15 +91,6 @@ func (g *GroupOverview) GroupRealtimeQuery(group []byte) (number int64, low int6
 	ok = true
 	return
 }
-func growTablePairArray(i []TablePair,wanted int) []TablePair {
-	if cap(i)<wanted {
-		n := make([]TablePair,wanted)
-		copy(n,i)
-		return n
-	}
-	return i[:wanted]
-}
-
 func (g *GroupOverview) GroupRealtimeList(targ func(group []byte, high, low int64, status byte)) bool {
 	if g.Overview==nil { return false }
 	mp := g.Overview.Map
