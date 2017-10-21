@@ -24,6 +24,7 @@ SOFTWARE.
 package cassandra
 
 import "github.com/gocassa/gocassa"
+import "time"
 
 func joinUp(buf []byte,s []byte,i int64) []byte {
 	u := uint64(i)
@@ -39,10 +40,11 @@ func joinUp(buf []byte,s []byte,i int64) []byte {
 }
 
 type GroupNumValue struct{
-	Partit []byte
-	Clustr int
-	OrigNo int64
-	Value  []byte
+	Partit   []byte
+	Clustr   int
+	OrigNo   int64
+	Value    []byte
+	ExpireAt time.Time
 }
 func GnvTable(ksp gocassa.KeySpace) gocassa.Table {
 	return ksp.Table("v2grpov",&GroupNumValue{},gocassa.Keys{
@@ -53,8 +55,8 @@ func GnvTable(ksp gocassa.KeySpace) gocassa.Table {
 	})
 }
 
-func mkGNV(group []byte,num int64,value []byte) GroupNumValue {
-	return GroupNumValue{joinUp(make([]byte,0,len(group)+6),group,num>>16),int(num&0xffff),num,value}
+func mkGNV(group []byte,num int64,value []byte,expa time.Time) GroupNumValue {
+	return GroupNumValue{joinUp(make([]byte,0,len(group)+6),group,num>>16),int(num&0xffff),num,value,expa}
 }
 
 func getGNV(tab gocassa.Table,group []byte,num int64) gocassa.Filter {

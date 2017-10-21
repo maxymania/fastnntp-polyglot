@@ -86,6 +86,7 @@ func (a *Caps) PerformPost(id []byte, r *fastnntp.DotReader) (rejected bool, fai
 	
 	ngrps,e := a.GroupHeadCache.GroupHeadFilter(ngrps)
 	if e!=nil { return false,true }
+	if len(ngrps)==0 { return true,false }
 	
 	nums,e := a.GroupHeadDB.GroupHeadInsert(ngrps,nil)
 	if e!=nil { return false,true }

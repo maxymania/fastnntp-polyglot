@@ -25,12 +25,16 @@ package cassandra
 
 import "github.com/gocassa/gocassa"
 import "github.com/maxymania/fastnntp-polyglot"
+import "github.com/maxymania/fastnntp-polyglot/buffer"
 import "github.com/byte-mug/fastnntp/posting"
 import "github.com/davecgh/go-xdr/xdr2"
 import "bytes"
+import "github.com/maxymania/fastnntp-polyglot/policies"
+import "time"
 
 type StoredArticle struct{
 	MsgId,Head,Body,Over []byte
+	ExpireAt time.Time
 }
 
 func NewStoredArticleTable(ks gocassa.KeySpace) gocassa.Table {
@@ -42,9 +46,10 @@ func NewStoredArticleTable(ks gocassa.KeySpace) gocassa.Table {
 }
 
 type ArticleStorage struct{
-	ks  gocassa.KeySpace
-	gnv gocassa.Table
-	sat gocassa.Table
+	ks     gocassa.KeySpace
+	gnv    gocassa.Table
+	sat    gocassa.Table
+	Policy policies.PostingPolicy
 }
 
 func NewArticleStorage(ks gocassa.KeySpace) *ArticleStorage {
@@ -65,18 +70,24 @@ func (a *ArticleStorage) ArticleDirectStat(id []byte) bool {
 	return ok&&len(sat)!=0
 }
 func (a *ArticleStorage) ArticleDirectGet(id []byte, head, body bool) *newspolyglot.ArticleObject {
+	var e error
 	sat := new(StoredArticle)
 	if a.sat.Where(gocassa.Eq("MsgId",id)).ReadOne(sat).Run()!=nil { return nil }
 	obj := new(newspolyglot.ArticleObject)
-	obj.Head = sat.Head
-	obj.Body = sat.Body
+	obj.Bufs[0],obj.Head,e = zdecode(sat.Head)
+	if e!=nil { return nil }
+	obj.Bufs[1],obj.Body,e = zdecode(sat.Body)
+	if e!=nil {
+		buffer.Put(obj.Bufs[0])
+		return nil
+	}
 	return obj
 }
 func (a *ArticleStorage) ArticleDirectOverview(id []byte) *newspolyglot.ArticleOverview {
 	sat := new(StoredArticle)
 	if a.sat.Where(gocassa.Eq("MsgId",id)).ReadOne(sat).Run()!=nil { return nil }
 	aov := new(newspolyglot.ArticleOverview)
-	xdr.Unmarshal(bytes.NewReader(sat.Over),aov) // Assume the correct format.
+	zunmarshal(sat.Over,aov) // Assume the correct format.
 	return aov
 }
 
@@ -84,7 +95,7 @@ func (a *ArticleStorage) ArticleGroupStat(group []byte, num int64, id_buf []byte
 	gnvo := new(GroupNumValue)
 	if getGNV(a.gnv,group,num).ReadOne(&gnvo).Run()!=nil { return nil,false }
 	aov := new(newspolyglot.ArticleOverview)
-	xdr.Unmarshal(bytes.NewReader(gnvo.Value),aov) // Assume the correct format.
+	zunmarshal(gnvo.Value,aov) // Assume the correct format.
 	return aov.MsgId,true
 }
 func (a *ArticleStorage) ArticleGroupGet(group []byte, num int64, head, body bool, id_buf []byte) ([]byte, *newspolyglot.ArticleObject) {
@@ -97,7 +108,7 @@ func (a *ArticleStorage) ArticleGroupGet(group []byte, num int64, head, body boo
 func (a *ArticleStorage) ArticleGroupOverview(group []byte, first, last int64, targ func(int64, *newspolyglot.ArticleOverview)) {
 	aov := new(newspolyglot.ArticleOverview)
 	getLoopGNV(a.gnv,group,first,last,func(i int64,b []byte) bool {
-		xdr.Unmarshal(bytes.NewReader(b),aov) // Assume the correct format.
+		zunmarshal(b,aov) // Assume the correct format.
 		targ(i,aov)
 		return true
 	})
@@ -118,7 +129,7 @@ func (a *ArticleStorage) ArticleGroupMove(group []byte, i int64, backward bool, 
 	}
 	if ok {
 		aov := new(newspolyglot.ArticleOverview)
-		xdr.Unmarshal(bytes.NewReader(buf),aov)
+		zunmarshal(buf,aov) // Assume the correct format.
 		id = aov.MsgId
 	}
 	return
@@ -134,22 +145,26 @@ func (a *ArticleStorage) ArticlePostingPost(headp *posting.HeadInfo, body []byte
 	ao.Bytes   = int64(len(headp.RAW)+2+len(body))
 	ao.Lines   = posting.CountLines(body)
 	
+	decision := policies.Def(a.Policy).Decide(ngs,ao.Lines,ao.Bytes)
+	
 	chunk := []byte(nil)
 	{
 		buf := new(bytes.Buffer)
 		xdr.Marshal(buf,&(ao))
 		chunk = buf.Bytes()
 	}
+	chunk = decision.CompressXover.Def()(policies.DEFLATE{},chunk)
 	
 	art := new(StoredArticle)
-	art.MsgId   = headp.MessageId
-	art.Head = headp.RAW
-	art.Body = body
-	art.Over = chunk
+	art.MsgId    = headp.MessageId
+	art.Head     = decision.CompressHeader.Def()(policies.DEFLATE{},headp.RAW)
+	art.Body     = decision.CompressBody.Def()(policies.DEFLATE{},body)
+	art.Over     = chunk
+	art.ExpireAt = decision.ExpireAt
 	
 	op := a.sat.Set(art)
 	for i,ng := range ngs {
-		op = op.Add(a.gnv.Set(mkGNV(ng,numbs[i],chunk)))
+		op = op.Add(a.gnv.Set(mkGNV(ng,numbs[i],chunk,decision.ExpireAt)))
 	}
 	if a.ArticleDirectStat(headp.MessageId) { return true,false,nil } // We already have it.
 	if op.Run()!=nil { return false,true,nil }

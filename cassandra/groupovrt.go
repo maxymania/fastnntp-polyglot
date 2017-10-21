@@ -23,4 +23,60 @@ SOFTWARE.
 
 package cassandra
 
-// Code Removed.
+import "io"
+import "compress/flate"
+import "bytes"
+import "github.com/davecgh/go-xdr/xdr2"
+import "sync"
+import "github.com/maxymania/fastnntp-polyglot/buffer"
+import "fmt"
+
+var EBufferTooLarge = fmt.Errorf("E-Buffer-Too-Large")
+
+var flatePool sync.Pool
+
+func zunmarshal(data []byte,v interface{}) error {
+	var r io.ReadCloser
+	d := bytes.NewReader(data)
+	ir := flatePool.Get()
+	if ir==nil {
+		r  = flate.NewReader(d)
+	} else {
+		ir.(flate.Resetter).Reset(d,nil)
+		r = ir.(io.ReadCloser)
+	}
+	defer flatePool.Put(r)
+	_,e := xdr.Unmarshal(r,v)
+	return e
+}
+
+func zdecode(data []byte) (*[]byte,[]byte,error) {
+	var r io.ReadCloser
+	d := bytes.NewReader(data)
+	ir := flatePool.Get()
+	if ir==nil {
+		r  = flate.NewReader(d)
+	} else {
+		ir.(flate.Resetter).Reset(d,nil)
+		r = ir.(io.ReadCloser)
+	}
+	defer flatePool.Put(r)
+	
+	tb := buffer.Get(1<<16)
+	wegot := 0
+	for {
+		n,e := r.Read((*tb)[wegot:])
+		wegot += n
+		if e==io.EOF { break }
+		if e!=nil { buffer.Put(tb) ; return nil,nil,e }
+		if wegot==len(*tb) {
+			ntb := buffer.Get(len(*tb)*2)
+			if ntb!=nil { buffer.Put(tb) ; return nil,nil,EBufferTooLarge }
+			copy(*ntb,*tb)
+			buffer.Put(tb)
+			tb = ntb
+		}
+	}
+	
+	return tb,(*tb)[:wegot],nil
+}

@@ -126,7 +126,7 @@ func (g *GroupOverview) GroupRealtimeList(targ func(group []byte, high, low int6
 				}
 			}
 			i++
-			if i>lar { break }
+			if i>=lar { break }
 		}
 	}
 	
@@ -147,7 +147,9 @@ func (g *GroupOverview) GroupHeadFilter(groups [][]byte) ([][]byte, error) {
 	mp := g.Overview.Map
 	i := 0
 	for _,group := range groups {
-		if _,ok := mp[string(group)] ; !ok { continue }
+		grp := mp[string(group)]
+		if len(grp.Value)==0 { continue }
+		if grp.Value[0]!='y' { continue }
 		groups[i] = group
 		i++
 	}

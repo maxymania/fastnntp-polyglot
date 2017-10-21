@@ -31,8 +31,10 @@ func skipPos(low, high, count, pos int64) int64 {
 	return pos
 }
 type GroupEntry struct {
+	_msgpack struct{} `msgpack:",asArray"`
 	Low1,High1,Count1 int64
 	Low2,High2,Count2 int64
+	Flags int // We'll propably need it later!
 }
 func (g *GroupEntry) Increment() int64 {
 	pos := skipPos(g.Low1,g.High1,g.Count1,0)
