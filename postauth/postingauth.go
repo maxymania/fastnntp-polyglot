@@ -30,7 +30,7 @@ const (
 	ARModerator
 	ARFeeder
 )
-type (rank AuthRank) TestStatus(status byte) (ok bool){
+func (rank AuthRank) TestStatus(status byte) (ok bool){
 	switch status {
 	case 'y':
 		ok = ARUser     <=rank
