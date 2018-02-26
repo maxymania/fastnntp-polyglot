@@ -34,7 +34,7 @@ import "fmt"
 
 import "sync"
 
-var pvArticleWriter sync.Pool
+var pvArticleWriter,pvXoverWriter sync.Pool
 
 func Dedupe(names [][]byte) [][]byte {
 	i := 0
@@ -137,7 +137,7 @@ func (a *Caps) WriteOverview(ar *fastnntp.ArticleRange) func(w fastnntp.IOvervie
 	if ar.HasId {
 		artc := a.ArticleDirectDB.ArticleDirectOverview(ar.MessageId)
 		if artc==nil { return nil }
-		return (&xoverWriter{artc}).write
+		return mkXoverWriter(artc).wObject
 	}
 	if ar.HasNum {
 		return func(w fastnntp.IOverview) {
@@ -207,12 +207,22 @@ func (aw *articleWriter) write(w *fastnntp.DotWriter) {
 }
 type xoverWriter struct{
 	over *newspolyglot.ArticleOverview
+	wObject func(w fastnntp.IOverview)
 }
 func (x *xoverWriter) write(w fastnntp.IOverview) {
 	defer newspolyglot.ReleaseArticleOverview(x.over)
 	w.WriteEntry(0, x.over.Subject, x.over.From, x.over.Date, x.over.MsgId, x.over.Refs, x.over.Bytes, x.over.Lines)
 }
-
+func gtXoverWriter() interface{} {
+	x := new(xoverWriter)
+	x.wObject = x.write
+	return x
+}
+func mkXoverWriter(over *newspolyglot.ArticleOverview) *xoverWriter {
+	x := pvXoverWriter.Get().(*xoverWriter)
+	x.over = over
+	return x
+}
 
 func (a *Caps) ListGroups(wm *fastnntp.WildMat, ila fastnntp.IListActive) bool {
 	active,descr := lam2bool(ila.GetListActiveMode())
@@ -232,4 +242,5 @@ func (a *Caps) ListGroups(wm *fastnntp.WildMat, ila fastnntp.IListActive) bool {
 
 func init(){
 	pvArticleWriter.New = gtArticleWriter
+	pvXoverWriter.New = gtXoverWriter
 }
