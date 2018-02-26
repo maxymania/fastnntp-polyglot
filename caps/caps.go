@@ -32,6 +32,10 @@ import "github.com/maxymania/fastnntp-polyglot/buffer"
 import "bytes"
 import "fmt"
 
+import "sync"
+
+var pvArticleWriter sync.Pool
+
 func Dedupe(names [][]byte) [][]byte {
 	i := 0
 	for _,name := range names{
@@ -116,7 +120,7 @@ func (a *Caps) GetArticle(ar *fastnntp.Article, head, body bool) func(w *fastnnt
 	if ar.HasId {
 		article := a.ArticleDirectDB.ArticleDirectGet(ar.MessageId,head,body)
 		if article!=nil {
-			return (&articleWriter{article,head,body}).write
+			return mkArticleWriter(article,head,body).wObject
 		}
 		return nil
 	}
@@ -125,7 +129,7 @@ func (a *Caps) GetArticle(ar *fastnntp.Article, head, body bool) func(w *fastnnt
 		if article==nil { return nil }
 		ar.MessageId = id
 		ar.HasId = true
-		return (&articleWriter{article,head,body}).write
+		return mkArticleWriter(article,head,body).wObject
 	}
 	return nil
 }
@@ -170,7 +174,23 @@ func (a *Caps) GetGroup(g *fastnntp.Group) bool {
 type articleWriter struct{
 	object *newspolyglot.ArticleObject
 	head, body bool
+	wObject func(w *fastnntp.DotWriter)
 }
+
+func gtArticleWriter() interface{} {
+	aw := new(articleWriter)
+	aw.wObject = aw.write
+	return aw
+}
+
+func mkArticleWriter(object *newspolyglot.ArticleObject, head, body bool) *articleWriter {
+	obj := pvArticleWriter.Get().(*articleWriter)
+	obj.object = object
+	obj.head   = head
+	obj.body   = body
+	return obj
+}
+
 func (aw *articleWriter) write(w *fastnntp.DotWriter) {
 	if aw.head {
 		w.Write(aw.object.Head)
@@ -182,6 +202,8 @@ func (aw *articleWriter) write(w *fastnntp.DotWriter) {
 	w.Write([]byte(".\r\n"))
 	for _,buf := range aw.object.Bufs { buffer.Put(buf) }
 	newspolyglot.ReleaseArticleObject(aw.object)
+	aw.object = nil
+	pvArticleWriter.Put(aw)
 }
 type xoverWriter struct{
 	over *newspolyglot.ArticleOverview
@@ -205,4 +227,9 @@ func (a *Caps) ListGroups(wm *fastnntp.WildMat, ila fastnntp.IListActive) bool {
 		})
 	}
 	return false
+}
+
+
+func init(){
+	pvArticleWriter.New = gtArticleWriter
 }
