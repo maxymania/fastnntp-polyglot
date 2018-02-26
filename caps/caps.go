@@ -1,7 +1,7 @@
 /*
 MIT License
 
-Copyright (c) 2017 Simon Schmidt
+Copyright (c) 2018 Simon Schmidt
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -132,6 +132,7 @@ func (a *Caps) GetArticle(ar *fastnntp.Article, head, body bool) func(w *fastnnt
 func (a *Caps) WriteOverview(ar *fastnntp.ArticleRange) func(w fastnntp.IOverview) {
 	if ar.HasId {
 		artc := a.ArticleDirectDB.ArticleDirectOverview(ar.MessageId)
+		if artc==nil { return nil }
 		return (&xoverWriter{artc}).write
 	}
 	if ar.HasNum {
@@ -178,15 +179,19 @@ func (aw *articleWriter) write(w *fastnntp.DotWriter) {
 	if aw.body {
 		w.Write(aw.object.Body)
 	}
-	for _,buf := range aw.object.Bufs { buffer.Put(buf) }
 	w.Write([]byte(".\r\n"))
+	for _,buf := range aw.object.Bufs { buffer.Put(buf) }
+	newspolyglot.ReleaseArticleObject(aw.object)
 }
 type xoverWriter struct{
 	over *newspolyglot.ArticleOverview
 }
 func (x *xoverWriter) write(w fastnntp.IOverview) {
+	defer newspolyglot.ReleaseArticleOverview(x.over)
 	w.WriteEntry(0, x.over.Subject, x.over.From, x.over.Date, x.over.MsgId, x.over.Refs, x.over.Bytes, x.over.Lines)
 }
+
+
 func (a *Caps) ListGroups(wm *fastnntp.WildMat, ila fastnntp.IListActive) bool {
 	active,descr := lam2bool(ila.GetListActiveMode())
 	if !descr {
