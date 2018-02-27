@@ -34,7 +34,7 @@ import "fmt"
 
 import "sync"
 
-var pvArticleWriter,pvXoverWriter,pvXoverWriter2,pvNumberPrinter sync.Pool
+var pvArticleWriter,pvXoverWriter,pvXoverWriter2,pvNumberPrinter,pvGroupLister sync.Pool
 
 func Dedupe(names [][]byte) [][]byte {
 	i := 0
@@ -274,18 +274,38 @@ func (x *xoverWriter2) write(num int64,xover *newspolyglot.ArticleOverview) {
 	x.aw.WriteEntry(num, xover.Subject, xover.From, xover.Date, xover.MsgId, xover.Refs, xover.Bytes, xover.Lines)
 }
 
+type groupLister struct{
+	ila fastnntp.IListActive
+	aObject func(group []byte, high, low int64, status byte)
+	nObject func(group []byte, descr []byte)
+}
+func (g *groupLister) active(group []byte, high, low int64, status byte) {
+	g.ila.WriteActive(group, high, low, status)
+}
+func (g *groupLister) newsgroup(group []byte, descr []byte) {
+	g.ila.WriteNewsgroups(group, descr)
+}
+func (g *groupLister) free() {
+	g.ila = nil
+	pvGroupLister.Put(g)
+}
+func gtGroupLister() interface{} {
+	g := new(groupLister)
+	g.aObject = g.active
+	g.nObject = g.newsgroup
+	return g
+}
 
 func (a *Caps) ListGroups(wm *fastnntp.WildMat, ila fastnntp.IListActive) bool {
+	gt := pvGroupLister.Get().(*groupLister)
+	defer gt.free()
+	gt.ila = ila
 	active,descr := lam2bool(ila.GetListActiveMode())
 	if !descr {
-		return a.GroupRealtimeDB.GroupRealtimeList(func(group []byte, high, low int64, status byte){
-			ila.WriteActive(group, high, low, status)
-		})
+		return a.GroupRealtimeDB.GroupRealtimeList(gt.aObject)
 	}
 	if !active {
-		return a.GroupStaticDB.GroupStaticList(func(group []byte, descr []byte){
-			ila.WriteNewsgroups(group, descr)
-		})
+		return a.GroupStaticDB.GroupStaticList(gt.nObject)
 	}
 	return false
 }
@@ -296,4 +316,5 @@ func init(){
 	pvXoverWriter.New = gtXoverWriter
 	pvXoverWriter2.New = gtXoverWriter2
 	pvNumberPrinter.New = gtNumberPrinter
+	pvGroupLister.New = gtGroupLister
 }
