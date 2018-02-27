@@ -34,7 +34,7 @@ import "fmt"
 
 import "sync"
 
-var pvArticleWriter,pvXoverWriter,pvXoverWriter2 sync.Pool
+var pvArticleWriter,pvXoverWriter,pvXoverWriter2,pvNumberPrinter sync.Pool
 
 func Dedupe(names [][]byte) [][]byte {
 	i := 0
@@ -152,11 +152,31 @@ func (a *Caps) ListGroup(g *fastnntp.Group, w *fastnntp.DotWriter, first, last i
 	if first<g.Low { first = g.Low }
 	if last>g.High { last = g.High }
 	// Restrict the range.
-	a.ArticleGroupDB.ArticleGroupList(g.Group,first,last,func(num int64){
-		fmt.Fprintf(w,"%v\r\n",num)
-	})
+	n := pvNumberPrinter.Get().(*numberPrinter)
+	n.w = w
+	defer n.free()
+	a.ArticleGroupDB.ArticleGroupList(g.Group,first,last,n.nObject)
 	return
 }
+
+type numberPrinter struct {
+	w *fastnntp.DotWriter
+	nObject func(num int64)
+}
+func gtNumberPrinter() interface{} {
+	p := new(numberPrinter)
+	p.nObject = p.number
+	return p
+}
+
+func (n *numberPrinter) number(num int64) {
+	fmt.Fprintf(n.w,"%v\r\n",num)
+}
+func (n *numberPrinter) free(){
+	n.w = nil
+	pvNumberPrinter.Put(n)
+}
+
 func (a *Caps) GetGroup(g *fastnntp.Group) bool {
 	n,l,h,ok := a.GroupRealtimeDB.GroupRealtimeQuery(g.Group)
 	if ok {
@@ -275,4 +295,5 @@ func init(){
 	pvArticleWriter.New = gtArticleWriter
 	pvXoverWriter.New = gtXoverWriter
 	pvXoverWriter2.New = gtXoverWriter2
+	pvNumberPrinter.New = gtNumberPrinter
 }
