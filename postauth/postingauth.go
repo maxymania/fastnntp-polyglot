@@ -29,6 +29,8 @@ const (
 	ARUser
 	ARModerator
 	ARFeeder
+	
+	AR_MAX
 )
 func (rank AuthRank) TestStatus(status byte) (ok bool){
 	switch status {
