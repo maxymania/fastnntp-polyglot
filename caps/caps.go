@@ -228,6 +228,7 @@ type xoverWriter struct{
 func (x *xoverWriter) write(w fastnntp.IOverview) {
 	w.WriteEntry(0, x.over.Subject, x.over.From, x.over.Date, x.over.MsgId, x.over.Refs, x.over.Bytes, x.over.Lines)
 	newspolyglot.ReleaseArticleOverview(x.over)
+	pvXoverWriter.Put(x)
 }
 
 func gtXoverWriter() interface{} {
