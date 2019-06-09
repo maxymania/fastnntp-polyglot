@@ -127,7 +127,7 @@ func (s *Storage) ArticleDirectOverview(id []byte) *newspolyglot.ArticleOverview
 	if !iter.scanclose(&b) { return nil }
 	ov := newspolyglot.AcquireArticleOverview()
 	
-	if msgpackx.Unmarshal(b,flattenP)!=nil { return nil }
+	if msgpackx.Unmarshal(b,flattenP(ov)...)!=nil { return nil }
 	
 	return ov
 }
