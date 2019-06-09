@@ -21,6 +21,9 @@ SOFTWARE.
 */
 
 
+/*
+Cassandra backend for gold.GroupListDB.
+*/
 package glcass
 
 import "bytes"

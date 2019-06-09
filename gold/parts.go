@@ -21,20 +21,31 @@ SOFTWARE.
 */
 
 
+/*
+Mature implemenations of various backend-modules.
+*/
 package gold
 
 import "github.com/maxymania/fastnntp-polyglot"
 import "github.com/maxymania/fastnntp-polyglot/postauth"
-
+import "github.com/byte-mug/fastnntp/posting"
 
 type ArticleGroupEX interface {
 	newspolyglot.ArticleGroupDB
+	
 	StoreArticleInfos(groups [][]byte, nums []int64, exp uint64, ov *newspolyglot.ArticleOverview) (err error)
 	GroupRealtimeQuery(group []byte) (number int64, low int64, high int64, ok bool)
 }
 
+type ArticleDirectEX interface {
+	newspolyglot.ArticleDirectDB
+	
+	ArticleDirectStore(exp uint64, ov *newspolyglot.ArticleOverview,obj *newspolyglot.ArticleObject) (err error)
+	ArticleDirectRollback(id []byte)
+}
+
 type ArticleGroupWrapper struct {
-	ArticleGroupEX
+	newspolyglot.ArticleGroupDB
 	Direct newspolyglot.ArticleDirectDB
 }
 func (a *ArticleGroupWrapper) ArticleGroupGet(group []byte, num int64, head, body bool, id_buf []byte) ([]byte, *newspolyglot.ArticleObject) {
@@ -53,3 +64,55 @@ type GroupListDB interface {
 	GroupBaseList(status, descr bool,targ func(group []byte, status byte, descr []byte)) bool
 }
 
+type PostingImpl struct {
+	Grp    ArticleGroupEX
+	Dir    ArticleDirectEX
+	
+	Policy PostingPolicyLite
+}
+func (p *PostingImpl) ArticlePostingCheckPost() (possible bool) {
+	return p.Policy!=nil
+}
+func (p *PostingImpl) ArticlePostingCheckPostId(id []byte) (wanted bool, possible bool) {
+	possible = p.Policy!=nil
+	wanted = !p.Dir.ArticleDirectStat(id)
+	return
+}
+
+func (p *PostingImpl) ArticlePostingPost(headp *posting.HeadInfo, body []byte, ngs [][]byte, numbs []int64) (rejected bool, failed bool, err error) {
+	ov := newspolyglot.AcquireArticleOverview()
+	defer newspolyglot.ReleaseArticleOverview(ov)
+	obj := newspolyglot.AcquireArticleObject()
+	defer newspolyglot.ReleaseArticleObject(obj)
+	
+	ov.Subject = headp.Subject
+	ov.From    = headp.From
+	ov.Date    = headp.Date
+	ov.MsgId   = headp.MessageId
+	ov.Refs    = headp.References
+	ov.Bytes   = int64(len(headp.RAW)+2+len(body))
+	ov.Lines   = posting.CountLines(body)
+	
+	obj.Head = headp.RAW
+	obj.Body = body
+	
+	decision := p.Policy.DecideLite(ngs,ov.Lines,ov.Bytes)
+	
+	exp := uint64(decision.ExpireAt.Unix())
+	
+	err = p.Dir.ArticleDirectStore(exp, ov,obj)
+	if err!=nil { failed = true; return }
+	
+	err = p.Grp.StoreArticleInfos(ngs, numbs, exp, ov)
+	if err!=nil {
+		failed = true
+		p.Dir.ArticleDirectRollback(ov.MsgId)
+		return
+	}
+	
+	return
+}
+
+var _ newspolyglot.ArticlePostingDB = (*PostingImpl)(nil)
+
+/* ### */
