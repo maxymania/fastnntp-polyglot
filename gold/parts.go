@@ -64,6 +64,32 @@ type GroupListDB interface {
 	GroupBaseList(status, descr bool,targ func(group []byte, status byte, descr []byte)) bool
 }
 
+type GroupRealtimeImpl struct {
+	ArticleGroupEX
+	List GroupListDB
+}
+func (g *GroupRealtimeImpl) GroupRealtimeList(targ func(group []byte, high, low int64, status byte)) bool {
+	return g.List.GroupBaseList(true,false,func(group []byte, status byte, descr []byte){
+		_, low , high , ok := g.GroupRealtimeQuery(group)
+		if !ok { return }
+		targ(group,high,low,status)
+	})
+}
+
+var _ newspolyglot.GroupRealtimeDB = (*GroupRealtimeImpl)(nil)
+
+type GroupStaticImpl struct {
+	List GroupListDB
+}
+
+func (g *GroupStaticImpl) GroupStaticList(targ func(group []byte, descr []byte)) bool {
+	return g.List.GroupBaseList(false,true,func(group []byte, status byte, descr []byte){
+		targ(group,descr)
+	})
+}
+
+var _ newspolyglot.GroupStaticDB = (*GroupStaticImpl)(nil)
+
 type PostingImpl struct {
 	Grp    ArticleGroupEX
 	Dir    ArticleDirectEX
