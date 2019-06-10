@@ -110,7 +110,7 @@ func (s *Storage) ArticleDirectGet(id []byte, head, body bool) *newspolyglot.Art
 	} else if !body {
 		ok = iter.scanclose(&obj.Head)
 	} else {
-		ok = iter.scanclose(&obj.Body,&obj.Head)
+		ok = iter.scanclose(&obj.Head,&obj.Body)
 	}
 	if !ok {
 		newspolyglot.ReleaseArticleObject(obj)

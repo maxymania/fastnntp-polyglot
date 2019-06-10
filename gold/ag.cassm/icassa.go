@@ -41,7 +41,7 @@ func getMsgId(ovd,id_buf []byte) ([]byte,bool) {
 	defer newspolyglot.ReleaseArticleOverview(o)
 	o.MsgId = id_buf
 	err := msgpackx.Unmarshal(ovd,flattenP(o)...)
-	return o.MsgId,err!=nil
+	return o.MsgId,err==nil
 }
 
 
