@@ -114,6 +114,7 @@ func (s *Storage) ArticleDirectGet(id []byte, head, body bool) *newspolyglot.Art
 	}
 	if !ok {
 		newspolyglot.ReleaseArticleObject(obj)
+		obj = nil
 	}
 	
 	return obj
