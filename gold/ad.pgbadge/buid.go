@@ -52,16 +52,16 @@ func Initialize(q IQueryable) {
 	)
 	`)
 	q.Prepare("msgkhbo_get0",`
-	SELECT khead,kbody,kover FROM msgkhbo WHERE msgid=?
+	SELECT khead,kbody,kover FROM msgkhbo WHERE msgid=$1
 	`)
 	q.Prepare("msgkhbo_get1",`
-	SELECT khead,kbody FROM msgkhbo WHERE msgid=?
+	SELECT khead,kbody FROM msgkhbo WHERE msgid=$1
 	`)
 	q.Prepare("msgkhbo_get2",`
-	SELECT kover FROM msgkhbo WHERE msgid=?
+	SELECT kover FROM msgkhbo WHERE msgid=$1
 	`)
 	q.Prepare("msgkhbo_insert",`
-	INSERT INTO msgkhbo (msgid,khead,kbody,kover,kttl) VALUES (?,?,?,?,?)
+	INSERT INTO msgkhbo (msgid,khead,kbody,kover,kttl) VALUES ($1,$2,$3,$4,$5)
 	`)
 }
 
@@ -101,7 +101,7 @@ func (i *CStuff) ArticleDirectGet(id []byte, head, body bool) *newspolyglot.Arti
 	
 	obj := newspolyglot.AcquireArticleObject()
 	ok := true
-	txn := i.DB.NewTransaction(true)
+	txn := i.DB.NewTransaction(false)
 	defer txn.Discard()
 	if ok && head {
 		ok = false
@@ -138,7 +138,7 @@ func (i *CStuff) ArticleDirectOverview(id []byte) *newspolyglot.ArticleOverview 
 	var k1 []byte
 	err := i.Q.QueryRow("msgkhbo_get2",id).Scan(&k1)
 	if err!=nil { return nil }
-	txn := i.DB.NewTransaction(true)
+	txn := i.DB.NewTransaction(false)
 	defer txn.Discard()
 	it,err := txn.Get(k1)
 	if err!=nil { return nil }
