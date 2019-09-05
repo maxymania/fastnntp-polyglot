@@ -71,6 +71,10 @@ func Initialize(q IQueryable) {
 	`)
 }
 
+func Maintainance(q IQueryable,current uint64) {
+	q.Exec("msgkhbo_maintain",current)
+}
+
 func entry(k,v []byte,exp uint64) *badger.Entry {
 	return &badger.Entry{
 		Key: k,
