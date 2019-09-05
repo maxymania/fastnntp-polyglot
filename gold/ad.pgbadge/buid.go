@@ -51,6 +51,12 @@ func Initialize(q IQueryable) {
 		kttl  bigint
 	)
 	`)
+	q.Exec(`
+	CREATE INDEX msgkhbo_kttlbrin ON msgkhbo USING brin (kttl)
+	`)
+	q.Prepare("msgkhbo_maintain",`
+	DELETE FROM msgkhbo WHERE kttl <= $1
+	`)
 	q.Prepare("msgkhbo_get0",`
 	SELECT khead,kbody,kover FROM msgkhbo WHERE msgid=$1
 	`)
