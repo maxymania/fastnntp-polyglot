@@ -70,10 +70,11 @@ func (p *PsqlBulkAllocator) AllocIds(group []byte, buf []uint64) ([]uint64, erro
 		var array pq.Int64Array
 		var tx *sql.Tx
 	
-		tx,err = p.DB.BeginTx(context.Background(),&sql.TxOptions{Isolation:sql.LevelSerializable})
+		tx,err = p.DB.BeginTx(context.Background(),&sql.TxOptions{Isolation:sql.LevelReadUncommitted})
 		if err!=nil { return nil,err }
 		
-		err = tx.QueryRow(`select ghlst[:$2] from groupheads where ghnam = $1`,group,len(buf)).Scan(&array)
+		// Select, AND LOCK the row. This prevents race conditions.
+		err = tx.QueryRow(`select ghlst[:$2] from groupheads where ghnam = $1 for update`,group,len(buf)).Scan(&array)
 		if err==sql.ErrNoRows {
 			tx.Rollback()
 			goto noRows
