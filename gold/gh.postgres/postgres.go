@@ -50,10 +50,11 @@ func (p *PsqlBulkAllocator) AllocIds(group []byte, buf []uint64) ([]uint64, erro
 		var nctr int64
 		
 		err = p.DB.QueryRow(`
-			update groupheads set ghctr = ghctr+$2 where ghnam = $1 returning ghctr;
+			update groupheads set ghctr = ghctr+$2
+				where ghnam = $1
+				and coalesce(array_length(ghlst,1),0)=0
+			returning ghctr;
 		`,group,len(buf)).Scan(&nctr)
-		
-		if err==sql.ErrNoRows { goto noRows }
 		if err==nil {
 			n := len(buf)-1
 			for i := range buf {
@@ -62,6 +63,7 @@ func (p *PsqlBulkAllocator) AllocIds(group []byte, buf []uint64) ([]uint64, erro
 			}
 			return buf,nil
 		}
+		if err!=sql.ErrNoRows { return nil,err }
 	}
 	
 	{
@@ -78,7 +80,7 @@ func (p *PsqlBulkAllocator) AllocIds(group []byte, buf []uint64) ([]uint64, erro
 		}
 		if err!=nil { return nil,err }
 		
-		_,err = tx.Exec(`update groupheads set ghlst[$2:] where ghnam = $1`,group,len(buf)+1)
+		_,err = tx.Exec(`update groupheads set ghlst = ghlst[$2:] where ghnam = $1`,group,len(buf)+1)
 		if err!=nil { return nil,err }
 		err = tx.Commit()
 		if err!=nil { return nil,err }
