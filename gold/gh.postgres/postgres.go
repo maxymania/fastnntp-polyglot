@@ -25,7 +25,6 @@ SOFTWARE.
 
 package postgres
 
-import "context"
 import "database/sql"
 import "github.com/lib/pq"
 import "github.com/maxymania/fastnntp-polyglot/gold/gh.generic"
@@ -38,7 +37,8 @@ func (p *PsqlBulkAllocator) Init() {
 		CREATE TABLE groupheads (
 			ghnam bytea primary key,
 			ghctr bigint default 0,
-			ghlst bigint[] default '{}'::bigint[]
+			ghlst bigint[] default '{}'::bigint[],
+			ghtmp bigint[]
 		)
 	`)
 }
@@ -68,30 +68,22 @@ func (p *PsqlBulkAllocator) AllocIds(group []byte, buf []uint64) ([]uint64, erro
 	
 	{
 		var array pq.Int64Array
-		var tx *sql.Tx
-	
-		tx,err = p.DB.BeginTx(context.Background(),&sql.TxOptions{Isolation:sql.LevelReadUncommitted})
+		
+		err = p.DB.QueryRow(`
+			update groupheads set ghtmp = ghlst[:$2], ghlst = ghlst[1+$2:] where ghnam = $1
+			returning ghtmp
+		`,group,len(buf)).Scan(&array)
+		
+		if err==sql.ErrNoRows { goto noRows }
 		if err!=nil { return nil,err }
 		
-		// Select, AND LOCK the row. This prevents race conditions.
-		err = tx.QueryRow(`select ghlst[:$2] from groupheads where ghnam = $1 for update`,group,len(buf)).Scan(&array)
-		if err==sql.ErrNoRows {
-			tx.Rollback()
-			goto noRows
-		}
-		if err!=nil { return nil,err }
-		
-		_,err = tx.Exec(`update groupheads set ghlst = ghlst[$2:] where ghnam = $1`,group,len(buf)+1)
-		if err!=nil { return nil,err }
-		err = tx.Commit()
-		if err!=nil { return nil,err }
 		if len(array)>len(buf) { array = array[:len(buf)] }
 		
 		for i,num := range array { buf[i] = uint64(num) }
 		return buf[:len(array)],nil
 	}
-	noRows:
 	
+	noRows:
 	_,err = p.DB.Exec(`insert into groupheads (ghnam,ghctr) values ($1,$2)`,group,len(buf))
 	if err!=nil { return nil,err }
 	
