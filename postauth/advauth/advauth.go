@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2018 Simon Schmidt
+Copyright (c) 2018,2020 Simon Schmidt
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -31,6 +31,15 @@ import "github.com/maxymania/fastnntp-polyglot/postauth"
 type LoginHookLite interface{
 	CheckUser(user []byte) bool
 	AuhtUserLite(user, password []byte) (postauth.AuthRank,bool)
+}
+type LoginAdm interface {
+	InsertUser(user, password []byte,rank postauth.AuthRank) error
+	UpdateUserPassword(user, password []byte) error
+	UpdateUserRank(user []byte, rank postauth.AuthRank) error
+}
+type LoginHook interface{
+	LoginHookLite
+	LoginAdm
 }
 
 type Deriver interface{
