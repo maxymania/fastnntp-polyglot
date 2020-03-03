@@ -68,6 +68,12 @@ type GroupRealtimeImpl struct {
 	ArticleGroupEX
 	List GroupListDB
 }
+func (g *GroupRealtimeImpl) GroupRealtimeQuery(group []byte) (number int64, low int64, high int64, ok bool) {
+	number,low,high,ok = g.ArticleGroupEX.GroupRealtimeQuery(group)
+	if ok { return }
+	if grps,_ := g.List.GroupHeadFilterWithAuth(postauth.ARFeeder,[][]byte{group}); len(grps)==1 { number,low,high,ok = 0,0,0,true }
+	return
+}
 func (g *GroupRealtimeImpl) GroupRealtimeList(targ func(group []byte, high, low int64, status byte)) bool {
 	return g.List.GroupBaseList(true,false,func(group []byte, status byte, descr []byte){
 		_, low , high , ok := g.GroupRealtimeQuery(group)
