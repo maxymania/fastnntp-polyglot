@@ -115,12 +115,15 @@ func (lh *CassLoginHook) UpdateUserPassword(user, password []byte) error {
 func (lh *CassLoginHook) UpdateUserRank(user []byte, rank postauth.AuthRank) error {
 	return qExec(lh.DB.Query(`UPDATE authtable SET authrank = ? WHERE username = ? IF EXISTS`,uint8(rank),user))
 }
+/*
 func (lh *CassLoginHook) CheckUser(user []byte) bool {
 	lh.DB.Query(`SELECT password FROM authtable WHILE username = ?`,user)
 	var x []byte
 	return qIter(lh.DB.Query(`SELECT password FROM authtable WHERE username = ?`,user)).scanclose(&x)
 }
-func (lh *CassLoginHook) AuhtUserLite(user, password []byte) (postauth.AuthRank,bool) {
+*/
+func (lh *CassLoginHook) AuthUserOnly(user []byte) (postauth.AuthRank,bool) { return 0,false }
+func (lh *CassLoginHook) AuthUserPass(user, password []byte) (postauth.AuthRank,bool) {
 	var pwdhash []byte
 	var rank uint8
 	if !qIter(lh.DB.Query(`SELECT password,authrank FROM authtable WHERE username = ?`,user)).scanclose(&pwdhash,&rank) { return 0,false }

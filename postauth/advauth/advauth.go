@@ -29,8 +29,8 @@ import "github.com/byte-mug/fastnntp"
 import "github.com/maxymania/fastnntp-polyglot/postauth"
 
 type LoginHookLite interface{
-	CheckUser(user []byte) bool
-	AuhtUserLite(user, password []byte) (postauth.AuthRank,bool)
+	AuthUserOnly(user []byte) (postauth.AuthRank,bool)
+	AuthUserPass(user, password []byte) (postauth.AuthRank,bool)
 }
 type LoginAdm interface {
 	InsertUser(user, password []byte,rank postauth.AuthRank) error
@@ -107,12 +107,19 @@ func (a *Auther) AuthinfoCheckPrivilege(p fastnntp.LoginPriv, h *fastnntp.Handle
 // This Method returns true, if the combination of username is accepted without password.
 // The method can optionally return a new Handler object in place of the old one.
 func (a *Auther) AuthinfoUserOny(user []byte, oldh *fastnntp.Handler) (bool, *fastnntp.Handler) {
-	return a.Hook.CheckUser(user),nil
+	rank,ok := a.Hook.AuthUserOnly(user)
+	if !ok { return false,nil }
+	
+	nh := a.Deriv.DeriveRankUserOpt(oldh,rank,user)
+	
+	if nh==nil { nh = a.getFor(rank) }
+	return true,nh
+	return false,nil
 }
 
 // This Method returns true, if the combination of username and password is accepted.
 func (a *Auther) AuthinfoUserPass(user, password []byte, oldh *fastnntp.Handler) (bool, *fastnntp.Handler) {
-	rank,ok := a.Hook.AuhtUserLite(user, password)
+	rank,ok := a.Hook.AuthUserPass(user, password)
 	if !ok { return false,nil }
 	
 	nh := a.Deriv.DeriveRankUserOpt(oldh,rank,user)
