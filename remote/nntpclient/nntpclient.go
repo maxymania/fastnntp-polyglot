@@ -308,7 +308,7 @@ func (c *Connection) Listgroup(f func(num int64),args interface{}) (err error) {
 }
 
 // Submits one of the following commands: ARTICLE, HEAD, BODY or STAT.
-func (c *Connection) Article(args []byte, head, body bool) (dr *fastnntp.DotReader,msgid []byte,err error) {
+func (c *Connection) Article(args []byte, head, body bool, f func(dr *fastnntp.DotReader, msgid []byte)) (err error) {
 	L := c.pl.ackquire(); defer L.release(); L.req()
 	
 	var code,data []byte
@@ -331,9 +331,45 @@ func (c *Connection) Article(args []byte, head, body bool) (dr *fastnntp.DotRead
 	code,data,err = c.readResponse()
 	err = errsel(err,err2)
 	expectReturn(&err,resp,code)
-	if err==nil && reader { dr = c.r.DotReader() }
+	var dr *fastnntp.DotReader
+	var msgid []byte
+	if err==nil && reader { dr = c.r.DotReader(); defer FinishDR(dr) }
 	elems := article_Rex.FindSubmatch(data)
 	if len(elems)!=0 { msgid = elems[1] }
+	f(dr,msgid)
+	return
+}
+
+// Submits one of the following commands: ARTICLE, HEAD, BODY or STAT.
+func (c *Connection) ArticleInto(args []byte, head, body bool, t io.Writer) (msgid []byte, err error) {
+	L := c.pl.ackquire(); defer L.release(); L.req()
+	
+	var code,data []byte
+	cmd := ""
+	resp := ""
+	reader := true
+	if head && body {
+		cmd,resp = "ARTICLE","220"
+	} else if head {
+		cmd,resp = "HEAD","221"
+	} else if body {
+		cmd,resp = "BODY","222"
+	} else {
+		cmd,resp,reader = "STAT","223",false
+	}
+	_,err2 := c.rwc.Write(concatb(c.outBuffer,cmd," ",args,"\r\n"))
+	
+	L.resp()
+	
+	code,data,err = c.readResponse()
+	err = errsel(err,err2)
+	expectReturn(&err,resp,code)
+	var dr *fastnntp.DotReader
+	
+	if err==nil && reader { dr = c.r.DotReader(); defer FinishDR(dr) }
+	elems := article_Rex.FindSubmatch(data)
+	if len(elems)!=0 { msgid = elems[1] }
+	if dr!=nil { io.Copy(t,dr) }
 	return
 }
 

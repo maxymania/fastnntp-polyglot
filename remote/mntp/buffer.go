@@ -21,50 +21,39 @@ SOFTWARE.
 */
 
 
-package nntpclient
+package mntpc
+
 
 import (
+	"io"
 	"sync"
-	"net/textproto"
+	"bytes"
+	"github.com/byte-mug/fastnntp"
 )
 
 
-type lPipeline struct {
-	textproto.Pipeline
-	rw sync.RWMutex
+type membuffer struct {
+	bytes.Buffer
+	writeToObject func(w *fastnntp.DotWriter)
 }
 
-func (p *lPipeline) exclusive() func() {
-	p.rw.Lock()
-	return p.rw.Unlock
+var pool_membuffer = sync.Pool{ New: func() interface{} {
+	return new(membuffer)
+} }
+
+func getMembuf() *membuffer {
+	m := pool_membuffer.Get().(*membuffer)
+	if m.writeToObject==nil { m.writeToObject = m.writeTo }
+	return m
 }
 
-type lRequest struct {
-	*lPipeline
-	id uint
-	state uint
+func (m *membuffer) release() {
+	m.Reset()
+	pool_membuffer.Put(m)
 }
-func (p *lPipeline) ackquire() (*lRequest) {
-	p.rw.RLock()
-	id := p.Next()
-	return &lRequest{p,id,0}
+func (m *membuffer) writeTo(w *fastnntp.DotWriter) {
+	io.Copy(w,m)
+	m.release()
 }
-func (r *lRequest) update(state uint) {
-	if state>3 { state = 3 }
-	for r.state<state {
-		r.state++
-		switch r.state {
-		case 1: r.StartRequest(r.id)
-		case 2:
-			r.EndRequest(r.id)
-			r.StartResponse(r.id)
-		case 3:
-			r.EndResponse(r.id)
-			r.rw.RUnlock()
-		}
-	}
-}
-func (r *lRequest) req() { r.update(1) }
-func (r *lRequest) resp() { r.update(2) }
-func (r *lRequest) release() { r.update(3) }
+
 
